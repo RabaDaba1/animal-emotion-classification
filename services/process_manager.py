@@ -1,32 +1,31 @@
 import multiprocessing as mp
 
 import visualization as vis
-from config import (
-    CROPPED_PETS_QUEUE_SIZE,
-    DETECTION_QUEUE_SIZE,
-    PROCESS_JOIN_TIMEOUT,
-    RAW_FRAME_QUEUE_SIZE,
-)
+from config import PROCESS_JOIN_TIMEOUT
 from services.image_acquisition import ImageAcquisition
 from services.image_corpping import ImageCropping
 from services.object_detection import ObjectDetection
 
 
 class ProcessManager:
-    def __init__(self):
-        self.raw_frame_queue = mp.Queue(maxsize=RAW_FRAME_QUEUE_SIZE)
-        self.detected_objects_queue = mp.Queue(maxsize=DETECTION_QUEUE_SIZE)
-        self.cropped_pets_queue = mp.Queue(maxsize=CROPPED_PETS_QUEUE_SIZE)
-        self.emotion_results_queue = mp.Queue()
+    def __init__(
+        self,
+        raw_frame_queue: mp.Queue,
+        detected_objects_queue: mp.Queue,
+        cropped_pets_queue: mp.Queue,
+        emotion_results_queue: mp.Queue,
+        image_acquisition: ImageAcquisition,
+        object_detection: ObjectDetection,
+        image_cropping: ImageCropping,
+    ):
+        self.raw_frame_queue = raw_frame_queue
+        self.detected_objects_queue = detected_objects_queue
+        self.cropped_pets_queue = cropped_pets_queue
+        self.emotion_results_queue = emotion_results_queue
 
-        self.image_acquisition = ImageAcquisition(output_queue=self.raw_frame_queue)
-        self.object_detection = ObjectDetection(
-            input_queue=self.raw_frame_queue, output_queue=self.detected_objects_queue
-        )
-        self.image_cropping = ImageCropping(
-            input_queue=self.detected_objects_queue,
-            output_queue=self.cropped_pets_queue,
-        )
+        self.image_acquisition = image_acquisition
+        self.object_detection = object_detection
+        self.image_cropping = image_cropping
 
         # TODO: self.emotion_classification
 
