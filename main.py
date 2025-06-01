@@ -8,6 +8,7 @@ from config import (
     DETECTION_QUEUE_SIZE,
     RAW_FRAME_QUEUE_SIZE,
 )
+from services.emotion_classification import EmotionClassification
 from services.image_acquisition import ImageAcquisition
 from services.image_corpping import ImageCropping
 from services.object_detection import ObjectDetection
@@ -37,6 +38,11 @@ if __name__ == "__main__":
         input_queue=detected_objects_queue, output_queue=cropped_pets_queue
     )
 
+    emotion_classification = EmotionClassification(
+        input_queue=cropped_pets_queue,
+        output_queue=emotion_results_queue,
+    )
+
     manager = ProcessManager(
         raw_frame_queue=raw_frame_queue,
         detected_objects_queue=detected_objects_queue,
@@ -45,6 +51,7 @@ if __name__ == "__main__":
         image_acquisition=image_acquisition,
         object_detection=object_detection,
         image_cropping=image_cropping,
+        emotion_classification=emotion_classification,
     )
 
     manager.start()
@@ -55,5 +62,6 @@ if __name__ == "__main__":
         # manager.view_raw_frames()
         # manager.view_detection_results()
         # manager.view_cropped_pets()
+        # manager.view_emotion_results()
     finally:
         manager.stop()
