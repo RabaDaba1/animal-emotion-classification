@@ -1,0 +1,10 @@
+Model: MobileNetV3 Large 100
+Number of classes: 3
+Class names: ['angry', 'happy', 'sad']
+Class to index mapping: {'angry': 0, 'happy': 1, 'sad': 2}
+Best validation accuracy: 88.43%
+Total training images: 2800
+Total validation images: 700
+Training epochs: 20
+Batch size: 32
+Learning rate: 0.001
