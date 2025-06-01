@@ -39,30 +39,40 @@ class ObjectDetection(mp.Process):
         try:
             frame, timestamp = self.input_queue.get(timeout=PROCESS_QUEUE_TIMEOUT)
             detections = self._detect_pets(frame)
-            self.output_queue.put((frame, timestamp, detections))
+            try:
+                self.output_queue.put_nowait((frame, timestamp, detections))
+            except:
+                pass
         except mp.queues.Empty:
             pass
+        except Exception as e:
+            print(f"Frame processing error: {e}")
 
     def _detect_pets(self, frame):
-        results = self.yolo_model(frame, conf=self.confidence)
+        try:
+            results = self.yolo_model(frame, conf=self.confidence)
 
-        detections = []
-        for result in results:
-            boxes = result.boxes
-            for box in boxes:
-                cls = int(box.cls.item())
-                if cls in self.pet_classes.values():
-                    x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
-                    conf = box.conf.item()
-                    detections.append(
-                        {
-                            "bbox": (x1, y1, x2, y2),
-                            "confidence": conf,
-                            "class": cls,
-                        }
-                    )
+            detections = []
+            for result in results:
+                boxes = result.boxes
+                if boxes is not None:
+                    for box in boxes:
+                        cls = int(box.cls.item())
+                        if cls in self.pet_classes.values():
+                            x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
+                            conf = box.conf.item()
+                            detections.append(
+                                {
+                                    "bbox": (x1, y1, x2, y2),
+                                    "confidence": conf,
+                                    "class": cls,
+                                }
+                            )
 
-        return detections
+            return detections
+        except Exception as e:
+            print(f"Detection error: {e}")
+            return []
 
     def stop(self):
         self.running.clear()

@@ -37,12 +37,14 @@ class ImageAcquisition(mp.Process):
 
         try:
             while self.running.is_set():
-                self._process_frame(camera, last_time, delay)
                 current_time = time.time()
                 if current_time - last_time >= delay:
+                    self._capture_frame(camera)
                     last_time = current_time
                 else:
                     time.sleep(CAMERA_SLEEP_TIME)
+        except Exception as e:
+            print(f"Error in ImageAcquisition: {e}")
         finally:
             camera.release()
 
@@ -54,20 +56,21 @@ class ImageAcquisition(mp.Process):
             return None
         return camera
 
-    def _process_frame(
-        self, camera: cv2.VideoCapture, last_time: float, delay: float
-    ) -> None:
-        current_time = time.time()
-        if current_time - last_time >= delay:
+    def _capture_frame(self, camera: cv2.VideoCapture) -> None:
+        try:
             ret, frame = camera.read()
             if not ret:
                 print("Error: Failed to capture image")
-                self.running.clear()
                 return
 
             timestamp = datetime.now()
             if self.output_queue.qsize() < MAX_QUEUE_FILL_LEVEL:
-                self.output_queue.put((frame, timestamp))
+                try:
+                    self.output_queue.put_nowait((frame, timestamp))
+                except Exception:
+                    pass
+        except Exception as e:
+            print(f"Frame capture error: {e}")
 
     def stop(self):
         self.running.clear()

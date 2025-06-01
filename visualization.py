@@ -22,6 +22,7 @@ QUEUE_COPIER_TIMEOUT = 0.1
 RAW_FEED_WINDOW_NAME = "Raw Camera Feed"
 DETECTION_WINDOW_NAME = "Pet Detection"
 CROPPED_PETS_WINDOW_NAME = "Cropped Pets"
+EMOTION_RESULTS_WINDOW_NAME = "Emotion Classification Results"
 
 
 def view_raw_frames(running: Callable[[], bool], raw_frame_queue: mpq.Queue) -> None:
@@ -132,6 +133,61 @@ def view_cropped_pets(
         cv2.destroyAllWindows()
 
 
+def view_emotion_results(
+    running: Callable[[], bool],
+    emotion_results_queue: mpq.Queue,
+) -> None:
+    if not running():
+        print("Pipeline is not running")
+        return
+
+    print(f"Displaying emotion results in window '{EMOTION_RESULTS_WINDOW_NAME}'")
+    print("Press 'q' to exit")
+
+    try:
+        while True:
+            try:
+                frame, _, emotion_results = emotion_results_queue.get(
+                    timeout=PROCESS_QUEUE_TIMEOUT
+                )
+
+                vis_frame = frame.copy()
+                for result in emotion_results:
+                    x1, y1, x2, y2 = result["bbox"]
+                    emotion = result["emotion"]
+                    confidence = result["confidence"]
+
+                    # Draw bounding box
+                    cv2.rectangle(
+                        vis_frame,
+                        (x1, y1),
+                        (x2, y2),
+                        BOUNDING_BOX_COLOR,
+                        TEXT_THICKNESS,
+                    )
+
+                    # Draw emotion label
+                    label = f"{emotion}: {confidence:.2f}"
+                    cv2.putText(
+                        vis_frame,
+                        label,
+                        (x1, y1 + TEXT_Y_OFFSET),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        TEXT_FONT_SCALE,
+                        BOUNDING_BOX_COLOR,
+                        TEXT_THICKNESS,
+                    )
+
+                cv2.imshow(EMOTION_RESULTS_WINDOW_NAME, vis_frame)
+
+                if cv2.waitKey(1) & 0xFF == ord("q"):
+                    break
+            except mp.queues.Empty:
+                time.sleep(WINDOW_WAIT_TIME)
+    finally:
+        cv2.destroyAllWindows()
+
+
 def create_image_grid(cropped_images: list[dict[str, any]]) -> np.ndarray:
     max_width = max([img["image"].shape[1] for img in cropped_images])
     max_height = max([img["image"].shape[0] for img in cropped_images])
@@ -160,9 +216,15 @@ def queue_copier(
         try:
             item = source_queue.get(timeout=QUEUE_COPIER_TIMEOUT)
             for queue in dest_queues:
-                queue.put(item)
+                try:
+                    queue.put_nowait(item)
+                except Exception:
+                    pass
         except mp.queues.Empty:
             continue
+        except Exception as e:
+            print(f"Queue copier error: {e}")
+            break
 
 
 def start_queue_copier(
@@ -232,6 +294,45 @@ def process_crops(crops_copy: mpq.Queue) -> bool:
         return False
 
 
+def process_emotion_results(emotion_results_copy: mpq.Queue) -> bool:
+    try:
+        frame, _, emotion_results = emotion_results_copy.get_nowait()
+
+        if emotion_results:
+            vis_frame = frame.copy()
+            for result in emotion_results:
+                x1, y1, x2, y2 = result["bbox"]
+                emotion = result["emotion"]
+                confidence = result["confidence"]
+
+                # Draw bounding box
+                cv2.rectangle(
+                    vis_frame,
+                    (x1, y1),
+                    (x2, y2),
+                    BOUNDING_BOX_COLOR,
+                    TEXT_THICKNESS,
+                )
+
+                # Draw emotion label
+                label = f"{emotion}: {confidence:.2f}"
+                cv2.putText(
+                    vis_frame,
+                    label,
+                    (x1, y1 + TEXT_Y_OFFSET),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    TEXT_FONT_SCALE,
+                    BOUNDING_BOX_COLOR,
+                    TEXT_THICKNESS,
+                )
+
+            cv2.imshow(EMOTION_RESULTS_WINDOW_NAME, vis_frame)
+            return True
+        return False
+    except mp.queues.Empty:
+        return False
+
+
 def view_all_outputs(
     running: Callable[[], bool],
     queues: tuple[mpq.Queue, ...],
@@ -248,30 +349,35 @@ def view_all_outputs(
         raw_frame_queue,
         detected_objects_queue,
         cropped_pets_queue,
+        emotion_results_queue,
     ) = queues
 
-    raw_frames_copy = mp.Queue()
-    detections_copy = mp.Queue()
-    crops_copy = mp.Queue()
+    # Create separate queues for visualization without affecting main pipeline
+    raw_frames_copy = mp.Queue(maxsize=10)
+    detections_copy = mp.Queue(maxsize=10)
+    crops_copy = mp.Queue(maxsize=10)
+    emotion_results_copy = mp.Queue(maxsize=10)
 
     running_event = mp.Event()
     running_event.set()
 
-    raw_copier = start_queue_copier(
-        raw_frame_queue, [raw_frame_queue, raw_frames_copy], running_event
-    )
+    raw_copier = start_queue_copier(raw_frame_queue, [raw_frames_copy], running_event)
     detection_copier = start_queue_copier(
-        detected_objects_queue, [detected_objects_queue, detections_copy], running_event
+        detected_objects_queue, [detections_copy], running_event
     )
     crop_copier = start_queue_copier(cropped_pets_queue, [crops_copy], running_event)
+    emotion_copier = start_queue_copier(
+        emotion_results_queue, [emotion_results_copy], running_event
+    )
 
     try:
         while True:
             # show_raw = process_raw_frames(raw_frames_copy)
             show_detection = process_detections(detections_copy, pet_classes)
             show_crops = process_crops(crops_copy)
+            show_emotions = process_emotion_results(emotion_results_copy)
 
-            if not (show_detection or show_crops):
+            if not (show_detection or show_crops or show_emotions):
                 time.sleep(0.1)
 
             if cv2.waitKey(1) & 0xFF == ord("q"):
@@ -281,5 +387,6 @@ def view_all_outputs(
         raw_copier.join(timeout=QUEUE_COPIER_JOIN_TIMEOUT)
         detection_copier.join(timeout=QUEUE_COPIER_JOIN_TIMEOUT)
         crop_copier.join(timeout=QUEUE_COPIER_JOIN_TIMEOUT)
+        emotion_copier.join(timeout=QUEUE_COPIER_JOIN_TIMEOUT)
 
         cv2.destroyAllWindows()
