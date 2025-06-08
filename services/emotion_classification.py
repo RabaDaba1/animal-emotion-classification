@@ -1,5 +1,6 @@
 import multiprocessing as mp
 import multiprocessing.queues as mpq
+from pathlib import Path
 
 import cv2
 import timm
@@ -17,7 +18,6 @@ class EmotionClassification(mp.Process):
         self.output_queue = output_queue
         self.running = mp.Event()
 
-        # Model will be loaded in the process
         self.model = None
         self.transform = None
         self.class_names = ["angry", "happy", "sad"]
@@ -34,30 +34,32 @@ class EmotionClassification(mp.Process):
             print(f"Error in EmotionClassification: {e}")
 
     def _load_model(self):
-        """Load the trained emotion classification model"""
-        try:
-            # For now, create a dummy model - replace with actual model loading
-            self.model = timm.create_model(
-                "mobilenetv3_large_100", pretrained=True, num_classes=3
-            )
-            self.model.to(self.device)
-            self.model.eval()
+        model_path = Path("mobilenetv3_pet_emotion_classifier.pth").resolve()
+        if not model_path.exists():
+            raise FileNotFoundError(f"Model file not found: {model_path}")
 
-            # Define transform
-            self.transform = transforms.Compose(
-                [
-                    transforms.Resize((224, 224)),
-                    transforms.ToTensor(),
-                    transforms.Normalize(
-                        mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
-                    ),
-                ]
-            )
+        checkpoint = torch.load(model_path, map_location=self.device)
 
-            print("Emotion classification model loaded successfully")
-        except Exception as e:
-            print(f"Failed to load emotion classification model: {e}")
-            self.model = None
+        self.model = timm.create_model(
+            "mobilenetv3_large_100", pretrained=False, num_classes=3
+        )
+
+        self.model.load_state_dict(checkpoint["model_state_dict"])
+        self.model.to(self.device)
+        self.model.eval()
+
+        self.transform = transforms.Compose(
+            [
+                transforms.Resize((224, 224)),
+                transforms.ToTensor(),
+                transforms.Normalize(
+                    mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
+                ),
+            ]
+        )
+
+        print("Fine-tuned emotion classification model loaded successfully")
+        print(f"Class names: {self.class_names}")
 
     def _process_next_crops(self):
         try:
@@ -103,7 +105,6 @@ class EmotionClassification(mp.Process):
 
                 pil_image = Image.fromarray(crop_image_rgb)
 
-                # Apply transform and predict
                 input_tensor = self.transform(pil_image).unsqueeze(0).to(self.device)
 
                 with torch.no_grad():
