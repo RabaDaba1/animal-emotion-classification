@@ -3,8 +3,9 @@ import multiprocessing.queues as mpq
 
 from ultralytics import YOLO
 
-from config import (
+from src.config import (
     DEFAULT_CONFIDENCE_THRESHOLD,
+    MODELS_DIR,
     PET_CLASSES,
     PROCESS_QUEUE_TIMEOUT,
     YOLO_MODEL_NAME,
@@ -25,7 +26,7 @@ class ObjectDetection(mp.Process):
         self.running = mp.Event()
 
         self.pet_classes = PET_CLASSES
-        self.yolo_model = YOLO(YOLO_MODEL_NAME)
+        self.yolo_model = YOLO(MODELS_DIR / YOLO_MODEL_NAME)
 
     def run(self):
         self.running.set()

@@ -6,7 +6,7 @@ from typing import Callable
 import cv2
 import numpy as np
 
-from config import (
+from src.config import (
     PROCESS_QUEUE_TIMEOUT,
     QUEUE_COPIER_JOIN_TIMEOUT,
     WINDOW_WAIT_TIME,

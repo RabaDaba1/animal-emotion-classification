@@ -1,26 +1,30 @@
 import multiprocessing as mp
-import multiprocessing.queues as mpq
-import unittest
 from unittest.mock import MagicMock, patch
 
 import numpy as np
+import torch
+from pytest import approx  # Import approx for float comparisons
 
-from config import (
+from src.config import (
     DEFAULT_CONFIDENCE_THRESHOLD,
+    MODELS_DIR,  # Add this import
     PET_CLASSES,
     PROCESS_QUEUE_TIMEOUT,
     YOLO_MODEL_NAME,
 )
-from services.object_detection import ObjectDetection
+from src.services.object_detection import ObjectDetection
 
 
-class TestObjectDetection(unittest.TestCase):
-    def setUp(self):
-        self.input_queue = MagicMock(spec=mpq.Queue)
-        self.output_queue = MagicMock(spec=mpq.Queue)
+class TestObjectDetection:
+    def setup_method(self, method):
+        self.input_queue = MagicMock(
+            spec=type(mp.Queue())
+        )  # Use type(mp.Queue()) for spec
+        self.output_queue = MagicMock(
+            spec=type(mp.Queue())
+        )  # Use type(mp.Queue()) for spec
 
-        # Patch YOLO model during initialization of ObjectDetection
-        with patch("services.object_detection.YOLO") as self.mock_yolo_constructor:
+        with patch("src.services.object_detection.YOLO") as self.mock_yolo_constructor:
             self.mock_yolo_model_instance = MagicMock()
             self.mock_yolo_constructor.return_value = self.mock_yolo_model_instance
             self.object_detector = ObjectDetection(
@@ -28,9 +32,9 @@ class TestObjectDetection(unittest.TestCase):
                 self.output_queue,
                 confidence=DEFAULT_CONFIDENCE_THRESHOLD,
             )
-        self.object_detector.running = MagicMock(spec=mp.Event)
+        self.object_detector.running = MagicMock(spec=type(mp.Event()))
 
-    def tearDown(self):
+    def teardown_method(self, method):
         if hasattr(self.object_detector, "running") and isinstance(
             self.object_detector.running, MagicMock
         ):
@@ -39,15 +43,19 @@ class TestObjectDetection(unittest.TestCase):
             self.object_detector.running.set.reset_mock()
 
     def test_initialization(self):
-        self.mock_yolo_constructor.assert_called_once_with(YOLO_MODEL_NAME)
-        self.assertEqual(self.object_detector.input_queue, self.input_queue)
-        self.assertEqual(self.object_detector.output_queue, self.output_queue)
-        self.assertEqual(self.object_detector.confidence, DEFAULT_CONFIDENCE_THRESHOLD)
-        self.assertEqual(self.object_detector.pet_classes, PET_CLASSES)
-        self.assertIsNotNone(self.object_detector.yolo_model)
+        self.mock_yolo_constructor.assert_called_once_with(
+            MODELS_DIR / YOLO_MODEL_NAME
+        )  # Updated assertion
+        assert self.object_detector.input_queue == self.input_queue
+        assert self.object_detector.output_queue == self.output_queue
+        assert self.object_detector.confidence == DEFAULT_CONFIDENCE_THRESHOLD
+        assert self.object_detector.pet_classes == PET_CLASSES
+        assert self.object_detector.yolo_model is not None
 
     def test_process_next_frame_empty_queue(self):
-        self.input_queue.get.side_effect = mp.queues.Empty
+        self.input_queue.get.side_effect = (
+            mp.queues.Empty
+        )  # This should be fine if input_queue is correctly mocked
         self.object_detector._process_next_frame()
         self.input_queue.get.assert_called_once_with(timeout=PROCESS_QUEUE_TIMEOUT)
         self.output_queue.put_nowait.assert_not_called()
@@ -72,9 +80,6 @@ class TestObjectDetection(unittest.TestCase):
     def test_detect_pets_success(self):
         mock_frame = np.zeros((100, 100, 3), dtype=np.uint8)
 
-        # Mock YOLO model output
-        # Assuming PET_CLASSES = {0: "cat", 1: "dog"}
-        # And we want to detect a cat (class 0)
         mock_box1 = MagicMock()
         mock_box1.cls = torch.tensor([0.0])  # Cat
         mock_box1.xyxy = torch.tensor([[10.0, 10.0, 50.0, 50.0]])
@@ -89,27 +94,20 @@ class TestObjectDetection(unittest.TestCase):
         mock_result.boxes = [mock_box1, mock_box2]
 
         self.object_detector.yolo_model.return_value = [mock_result]
-        # Ensure PET_CLASSES keys are integers for `cls in self.pet_classes.values()` to work as intended
-        # The original code has `cls in self.pet_classes.values()`. If PET_CLASSES maps names to ints, it should be `cls in self.pet_classes.keys()`
-        # Or if PET_CLASSES maps ints to names, it should be `cls in self.pet_classes.keys()`
-        # Given `PET_CLASSES = {"cat": 16, "dog": 17}` from typical COCO, `cls` (which is an int) should be checked against `self.pet_classes.values()`
-        # Let's assume PET_CLASSES = { "cat_name": 0, "dog_name": 1 } and the model returns 0 or 1.
-        # The current code `if cls in self.pet_classes.values():` implies PET_CLASSES values are the integer class IDs.
-        # Let's adjust the test to reflect this.
         self.object_detector.pet_classes = {
             "cat_label": 0,
             "dog_label": 1,
-        }  # Example, actual values from config
+        }  # Example, actual values from src.config
 
         detections = self.object_detector._detect_pets(mock_frame)
 
         self.object_detector.yolo_model.assert_called_once_with(
             mock_frame, conf=self.object_detector.confidence
         )
-        self.assertEqual(len(detections), 1)
-        self.assertEqual(detections[0]["bbox"], (10, 10, 50, 50))
-        self.assertAlmostEqual(detections[0]["confidence"], 0.95)
-        self.assertEqual(detections[0]["class"], 0)  # Class ID for cat
+        assert len(detections) == 1
+        assert detections[0]["bbox"] == (10, 10, 50, 50)
+        assert detections[0]["confidence"] == approx(0.95)
+        assert detections[0]["class"] == 0  # Class ID for cat
 
     def test_detect_pets_no_relevant_detections(self):
         mock_frame = np.zeros((100, 100, 3), dtype=np.uint8)
@@ -124,7 +122,7 @@ class TestObjectDetection(unittest.TestCase):
         self.object_detector.pet_classes = {"cat": 0, "dog": 1}
 
         detections = self.object_detector._detect_pets(mock_frame)
-        self.assertEqual(len(detections), 0)
+        assert len(detections) == 0
 
     def test_detect_pets_yolo_exception(self):
         mock_frame = np.zeros((100, 100, 3), dtype=np.uint8)
@@ -133,7 +131,7 @@ class TestObjectDetection(unittest.TestCase):
         with patch("builtins.print") as mock_print:
             detections = self.object_detector._detect_pets(mock_frame)
 
-        self.assertEqual(detections, [])
+        assert detections == []
         mock_print.assert_any_call("Detection error: YOLO error")
 
     def test_run_method_calls_process_loop(self):
@@ -161,7 +159,3 @@ class TestObjectDetection(unittest.TestCase):
     def test_stop(self):
         self.object_detector.stop()
         self.object_detector.running.clear.assert_called_once()
-
-
-if __name__ == "__main__":
-    unittest.main()

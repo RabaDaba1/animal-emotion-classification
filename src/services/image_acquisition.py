@@ -5,7 +5,7 @@ from datetime import datetime
 
 import cv2
 
-from config import (
+from src.config import (
     CAMERA_SLEEP_TIME,
     DEFAULT_CAMERA_DEVICE_ID,
     DEFAULT_FRAME_RATE,

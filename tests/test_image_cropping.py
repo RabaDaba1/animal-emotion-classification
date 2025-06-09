@@ -1,22 +1,20 @@
 import multiprocessing as mp
-import multiprocessing.queues as mpq
-import unittest
 from unittest.mock import MagicMock, patch
 
 import numpy as np
 
-from config import BOUNDING_BOX_MARGIN_PERCENT, PROCESS_QUEUE_TIMEOUT
-from services.image_corpping import ImageCropping  # Corrected typo: image_cropping
+from src.config import BOUNDING_BOX_MARGIN_PERCENT, PROCESS_QUEUE_TIMEOUT
+from src.services.image_cropping import ImageCropping
 
 
-class TestImageCropping(unittest.TestCase):
-    def setUp(self):
-        self.input_queue = MagicMock(spec=mpq.Queue)
-        self.output_queue = MagicMock(spec=mpq.Queue)
+class TestImageCropping:
+    def setup_method(self, method):
+        self.input_queue = MagicMock(spec=type(mp.Queue()))  # Use type(mp.Queue())
+        self.output_queue = MagicMock(spec=type(mp.Queue()))  # Use type(mp.Queue())
         self.image_cropper = ImageCropping(self.input_queue, self.output_queue)
-        self.image_cropper.running = MagicMock(spec=mp.Event)
+        self.image_cropper.running = MagicMock(spec=type(mp.Event()))
 
-    def tearDown(self):
+    def teardown_method(self, method):
         if hasattr(self.image_cropper, "running") and isinstance(
             self.image_cropper.running, MagicMock
         ):
@@ -25,7 +23,7 @@ class TestImageCropping(unittest.TestCase):
             self.image_cropper.running.set.reset_mock()
 
     def test_process_next_detections_empty_queue(self):
-        self.input_queue.get.side_effect = mp.queues.Empty
+        self.input_queue.get.side_effect = mp.queues.Empty  # This should be fine
         self.image_cropper._process_next_detections()
         self.input_queue.get.assert_called_once_with(timeout=PROCESS_QUEUE_TIMEOUT)
         self.output_queue.put_nowait.assert_not_called()
@@ -90,21 +88,21 @@ class TestImageCropping(unittest.TestCase):
         expected_w = int(60 + 2 * (60 * BOUNDING_BOX_MARGIN_PERCENT))
 
         cropped_image = self.image_cropper._crop_single_detection(frame, detection)
-        self.assertIsNotNone(cropped_image)
-        self.assertEqual(cropped_image.shape[0], expected_h)  # Height
-        self.assertEqual(cropped_image.shape[1], expected_w)  # Width
-        self.assertEqual(cropped_image.shape[2], 3)  # Channels
+        assert cropped_image is not None
+        assert cropped_image.shape[0] == expected_h  # Height
+        assert cropped_image.shape[1] == expected_w  # Width
+        assert cropped_image.shape[2] == 3  # Channels
 
     def test_crop_single_detection_invalid_bbox_zero_hw(self):
         frame = np.zeros((100, 100, 3), dtype=np.uint8)
         detection_zero_h = {"bbox": (20, 20, 80, 20)}  # height = 0
         detection_zero_w = {"bbox": (20, 20, 20, 80)}  # width = 0
 
-        self.assertIsNone(
-            self.image_cropper._crop_single_detection(frame, detection_zero_h)
+        assert (
+            self.image_cropper._crop_single_detection(frame, detection_zero_h) is None
         )
-        self.assertIsNone(
-            self.image_cropper._crop_single_detection(frame, detection_zero_w)
+        assert (
+            self.image_cropper._crop_single_detection(frame, detection_zero_w) is None
         )
 
     def test_crop_single_detection_margins_out_of_bounds(self):
@@ -121,7 +119,7 @@ class TestImageCropping(unittest.TestCase):
         cropped_image = self.image_cropper._crop_single_detection(
             frame, detection_near_edge
         )
-        self.assertIsNotNone(cropped_image)
+        assert cropped_image is not None
 
         h, w = 10, 10
         margin_x = int(w * BOUNDING_BOX_MARGIN_PERCENT)
@@ -132,8 +130,8 @@ class TestImageCropping(unittest.TestCase):
         expected_x2 = min(frame.shape[1], 10 + margin_x)
         expected_y2 = min(frame.shape[0], 10 + margin_y)
 
-        self.assertEqual(cropped_image.shape[0], expected_y2 - expected_y1)
-        self.assertEqual(cropped_image.shape[1], expected_x2 - expected_x1)
+        assert cropped_image.shape[0] == expected_y2 - expected_y1
+        assert cropped_image.shape[1] == expected_x2 - expected_x1
 
     def test_crop_single_detection_inverted_margins(self):
         frame = np.zeros((100, 100, 3), dtype=np.uint8)
@@ -156,7 +154,7 @@ class TestImageCropping(unittest.TestCase):
         cropped_image = self.image_cropper._crop_single_detection(
             frame, detection_outside
         )
-        self.assertIsNone(cropped_image)
+        assert cropped_image is None
 
     @patch.object(ImageCropping, "_crop_single_detection")
     def test_crop_detections(self, mock_crop_single):
@@ -171,18 +169,18 @@ class TestImageCropping(unittest.TestCase):
 
         results = self.image_cropper._crop_detections(frame, detections_data)
 
-        self.assertEqual(mock_crop_single.call_count, 2)
+        assert mock_crop_single.call_count == 2
         mock_crop_single.assert_any_call(frame, detections_data[0])
         mock_crop_single.assert_any_call(frame, detections_data[1])
 
-        self.assertEqual(len(results), 2)
-        self.assertIs(results[0]["image"], mock_cropped_img1)
-        self.assertEqual(results[0]["class"], detections_data[0]["class"])
-        self.assertEqual(results[0]["confidence"], detections_data[0]["confidence"])
-        self.assertEqual(results[0]["bbox"], detections_data[0]["bbox"])
+        assert len(results) == 2
+        assert results[0]["image"] is mock_cropped_img1
+        assert results[0]["class"] == detections_data[0]["class"]
+        assert results[0]["confidence"] == detections_data[0]["confidence"]
+        assert results[0]["bbox"] == detections_data[0]["bbox"]
 
-        self.assertIs(results[1]["image"], mock_cropped_img2)
-        self.assertEqual(results[1]["class"], detections_data[1]["class"])
+        assert results[1]["image"] is mock_cropped_img2
+        assert results[1]["class"] == detections_data[1]["class"]
 
     def test_run_method_calls_process_loop(self):
         self.image_cropper._process_next_detections = MagicMock()
@@ -209,7 +207,3 @@ class TestImageCropping(unittest.TestCase):
     def test_stop(self):
         self.image_cropper.stop()
         self.image_cropper.running.clear.assert_called_once()
-
-
-if __name__ == "__main__":
-    unittest.main()

@@ -1,11 +1,11 @@
 import multiprocessing as mp
 
-import visualization as vis
-from config import PROCESS_JOIN_TIMEOUT
-from services.emotion_classification import EmotionClassification
-from services.image_acquisition import ImageAcquisition
-from services.image_corpping import ImageCropping
-from services.object_detection import ObjectDetection
+import src.visualization as vis
+from src.config import PROCESS_JOIN_TIMEOUT
+from src.services.emotion_classification import EmotionClassification
+from src.services.image_acquisition import ImageAcquisition
+from src.services.image_cropping import ImageCropping
+from src.services.object_detection import ObjectDetection
 
 
 class ProcessManager:

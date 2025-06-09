@@ -3,7 +3,7 @@ import multiprocessing.queues as mpq
 
 import numpy as np
 
-from config import BOUNDING_BOX_MARGIN_PERCENT, PROCESS_QUEUE_TIMEOUT
+from src.config import BOUNDING_BOX_MARGIN_PERCENT, PROCESS_QUEUE_TIMEOUT
 
 
 class ImageCropping(mp.Process):

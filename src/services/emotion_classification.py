@@ -1,6 +1,5 @@
 import multiprocessing as mp
 import multiprocessing.queues as mpq
-from pathlib import Path
 
 import cv2
 import timm
@@ -8,7 +7,7 @@ import torch
 import torchvision.transforms as transforms
 from PIL import Image
 
-from config import PROCESS_QUEUE_TIMEOUT
+from src.config import EMOTION_CLASSIFICATION_MODEL_PATH, PROCESS_QUEUE_TIMEOUT
 
 
 class EmotionClassification(mp.Process):
@@ -34,11 +33,14 @@ class EmotionClassification(mp.Process):
             print(f"Error in EmotionClassification: {e}")
 
     def _load_model(self):
-        model_path = Path("mobilenetv3_pet_emotion_classifier.pth").resolve()
-        if not model_path.exists():
-            raise FileNotFoundError(f"Model file not found: {model_path}")
+        if not EMOTION_CLASSIFICATION_MODEL_PATH.exists():
+            raise FileNotFoundError(
+                f"Model file not found: {EMOTION_CLASSIFICATION_MODEL_PATH}"
+            )
 
-        checkpoint = torch.load(model_path, map_location=self.device)
+        checkpoint = torch.load(
+            EMOTION_CLASSIFICATION_MODEL_PATH, map_location=self.device
+        )
 
         self.model = timm.create_model(
             "mobilenetv3_large_100", pretrained=False, num_classes=3
